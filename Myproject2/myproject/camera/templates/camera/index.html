@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webcam and Audio Capture</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 20px;
+        }
+        video, canvas, audio {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-center">Webcam and Audio Capture</h1>
+        <div class="row">
+            <div class="col-md-8 offset-md-2 text-center">
+                <h2>Video Capture</h2>
+                <video id="video" width="640" height="480" autoplay></video>
+                <br>
+                <button id="snap" class="btn btn-primary mt-3">Capture</button>
+                <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+
+                <h2>Audio Capture</h2>
+                <button id="record" class="btn btn-primary">Start Recording</button>
+                <button id="stop" class="btn btn-secondary" disabled>Stop Recording</button>
+                <audio id="audio" controls></audio>
+            </div>
+        </div>
+    </div>
+    <div
+     id="picture-emotion-result">
+    </div>
+    <div
+     id="voice-emotion-result">
+    </div>
+    <script>
+        // Video capture
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const context = canvas.getContext('2d');
+        const snap = document.getElementById('snap');
+
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(error => {
+                console.error("Error accessing the camera", error);
+            });
+
+        snap.addEventListener('click', () => {
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataURL = canvas.toDataURL('image/png');
+            sendToServer('/upload/', dataURL);
+        });
+
+        function sendToServer(url, dataURL) {
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ data: dataURL })
+            })
+            .then(response => response.json())
+            .then(data => {
+                var arr = []
+                for(var i=0; i<data.result.length; i++)
+                {
+                    var j = data.result[i] * 100;
+                    arr.push(j.toFixed(2));
+                    console.log(data.result);
+                }
+                document.getElementById('picture-emotion-result').innerText = `Predicted Picture Emotion: angry: %${arr[0]}, disgust: %${arr[1]}, fear: %${arr[2]}, happy: %${arr[3]}, neutral: %${arr[4]}, sad: %${arr[5]}, surprise: %${arr[6]}`;
+            })
+            .catch((error) => {
+                console.error('Error:', error);
+            });
+        }
+
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+
+        // Audio capture
+        let mediaRecorder;
+        const record = document.getElementById('record');
+        const stop = document.getElementById('stop');
+        const audio = document.getElementById('audio');
+
+        record.addEventListener('click', async () => {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.start();
+
+            const audioChunks = [];
+            mediaRecorder.addEventListener('dataavailable', event => {
+                audioChunks.push(event.data);
+            });
+
+            mediaRecorder.addEventListener('stop', () => {
+                const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                const audioURL = URL.createObjectURL(audioBlob);
+                audio.src = audioURL;
+                sendAudioToServer(audioBlob);
+            });
+
+            record.disabled = true;
+            stop.disabled = false;
+        });
+
+        stop.addEventListener('click', () => {
+            mediaRecorder.stop();
+            record.disabled = false;
+            stop.disabled = true;
+        });
+
+        function sendAudioToServer(audioBlob) {
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.wav');
+
+            fetch('/upload_audio/', {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => { 
+                var arr = []
+                for(var i=0; i<data.result.length; i++)
+                {
+                    var j = data.result[i] * 100;
+                    arr.push(j.toFixed(2));
+                }
+                document.getElementById('voice-emotion-result').innerText = `Predicted Voice Emotion: angry: %${arr[0]}, disgust: %${arr[1]}, fear: %${arr[2]}, happy: %${arr[3]}, neutral: %${arr[4]}, sad: %${arr[5]}, surprise: %${arr[6]}`;
+            })
+            .catch((error) => {
+                console.error('Audio upload error:', error);
+            });
+        }
+    </script>
+</body>
+</html>
