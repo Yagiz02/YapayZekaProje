@@ -15,3 +15,4 @@ django 5.0.6
 tensorflow 2.16.1
 numpy 1.26.4 
 librosa 0.10.2.post1
+resampy 0.4.3
